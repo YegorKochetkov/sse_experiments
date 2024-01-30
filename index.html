@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSE experiments</title>
+</head>
+<body>
+  <h1>SSE experiments</h1>
+  <p id="sse"></p>
+  <script>
+    const eventSource = new EventSource("http://127.0.0.1:8080/get-stream");
+    const sseElement = document.getElementById("sse");
+    console.log("sse started");
+
+    eventSource.onmessage = (event) => {
+      sseElement.innerText = `${event.data} \nid: ${event.lastEventId} \n`;
+    }
+
+    eventSource.addEventListener("sse-stopped", () => {
+      console.log("sse stopped")
+      eventSource.close();
+    })
+  </script>
+</body>
+</html>

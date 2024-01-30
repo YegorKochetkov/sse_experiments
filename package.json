@@ -1,0 +1,12 @@
+{
+	"name": "sse_experiments",
+	"version": "1.0.0",
+	"description": "server side events",
+	"main": "server.js",
+	"scripts": {
+		"start": "nodemon server.js"
+	},
+	"author": "yegor_kochetkov",
+	"license": "ISC",
+	"type": "module"
+}
