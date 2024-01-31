@@ -1,6 +1,7 @@
 import fs from "fs";
 import http from "http";
 
+/** @type {number|string} */
 let dataForSSE;
 
 http
