@@ -1,63 +1,110 @@
-import fs from "fs";
-import http from "http";
+const fs = require("fs");
+const http2 = require("http2");
+const EventEmitter = require("events").EventEmitter;
+const {
+	HTTP2_HEADER_SCHEME,
+	HTTP2_HEADER_PATH,
+	HTTP2_HEADER_AUTHORITY,
+	HTTP_STATUS_OK,
+} = require("http2").constants;
 
-/** @type {number|string} */
-let dataForSSE;
+/** @type {string} cookie */
+const parseCookie = (cookie) => {
+	return cookie.split(";").reduce((acc, item) => {
+		const [key, value] = item.split("=");
+		acc[decodeURIComponent(key.trim())] = decodeURIComponent(value.trim());
 
-http
-	.createServer((req, res) => {
-		const reqUrl = new URL(req.url, `http://${req.headers.host}`);
+		return acc;
+	}, {});
+};
+
+class EE extends EventEmitter {
+	/**
+	 * @param {http2.ServerHttp2Stream} stream
+	 * @param {http2.IncomingHttpHeaders} headers
+	 */
+	init(stream, headers) {
+		let id = 0;
+		const cookie = headers.cookie ? parseCookie(headers.cookie) : {};
+		console.debug("cookie: ", cookie);
+
+		this.setMaxListeners(this.getMaxListeners() + 1);
+
+		stream.respond({
+			"content-type": "text/event-stream",
+			"cache-control": "no-cache",
+			"access-control-allow-origin": "*",
+		});
+
+		/**
+		 * @param {string} message
+		 */
+		const dataListener = (message) => {
+			if (message.event) {
+				stream.write(`event: ${message.event}\n`);
+			}
+
+			stream.write(
+				`data: ${message.data} of user ${cookie?.userName ?? "anonymous"}\n`,
+			);
+			stream.write(`id: ${++id}\n`);
+			stream.write("\n");
+		};
+
+		this.on("data", dataListener);
+		stream.on("close", () => {
+			this.off("data", dataListener);
+			console.debug("stream stopped");
+			this.setMaxListeners(this.getMaxListeners() - 1);
+		});
+	}
+
+	send(message) {
+		this.emit("data", message);
+	}
+}
+
+const sse = new EE();
+const server = http2.createSecureServer({
+	key: fs.readFileSync("localhost-privkey.pem"),
+	cert: fs.readFileSync("localhost-cert.pem"),
+});
+server.on("error", (err) => console.error(err));
+
+server
+	.on("stream", (stream, headers) => {
+		const scheme = headers[HTTP2_HEADER_SCHEME];
+		const authority = headers[HTTP2_HEADER_AUTHORITY];
+		const urlPath = headers[HTTP2_HEADER_PATH];
+		const reqUrl = new URL(urlPath, `${scheme}://${authority}`);
+
+		if (reqUrl.pathname === "/get-stream") {
+			sse.init(stream, headers);
+			console.debug("sse started");
+			return;
+		}
+
+		if (reqUrl.pathname === "/login") {
+			const userName = reqUrl.searchParams.get("userName");
+			console.debug("userName: ", userName);
+			stream.respond({
+				"set-cookie": `userName=${userName}`,
+				":status": "303",
+				location: "/",
+			});
+		}
 
 		if (reqUrl.pathname === "/send-message") {
 			const message = reqUrl.searchParams.get("message");
-			dataForSSE = message;
-			res.end();
+			console.debug("message: ", message);
+			sse.send({ data: message });
+			stream.respond({ ":status": HTTP_STATUS_OK });
+			stream.end("ok");
 			return;
 		}
 
-		if (req.url === "/get-stream") {
-			sse(req, res);
-			console.log("sse started");
-			return;
-		}
-
-		fs.createReadStream("index.html").pipe(res);
+		fs.createReadStream("index.html").pipe(stream);
 	})
 	.listen(8080, () => {
-		console.log("Server running at http://127.0.0.1:8080");
+		console.debug("Server running at https://127.0.0.1:8080");
 	});
-
-/**
- * @param {http.IncomingMessage} req
- * @param {http.ServerResponse} res
- */
-function sse(_req, res) {
-	res.setHeader("Content-Type", "text/event-stream");
-	res.setHeader("Cache-Control", "no-cache");
-	res.setHeader("Connection", "keep-alive");
-	res.setHeader("Access-Control-Allow-Origin", "*");
-
-	let id = 0;
-
-	const intervalId = setInterval(() => {
-		const message = dataForSSE ?? `Some random data: ${getRandomInt(100)}`;
-		res.write(`data: ${message}\n`);
-		res.write(`id: ${++id}\n\n`);
-	}, 1000);
-
-	setTimeout(() => {
-		clearInterval(intervalId);
-		res.write("event: sse-stopped\n");
-		res.write("data: sse stopped\n");
-		res.write(`id: ${++id}\n\n`);
-		console.log("sse stopped");
-		res.end("Ok");
-	}, 60_000);
-}
-
-/**
- * @param {number} max
- */
-function getRandomInt(max) {
-	return Math.floor(Math.random() * max);
-}

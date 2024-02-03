@@ -7,6 +7,5 @@
 		"start": "nodemon server.js"
 	},
 	"author": "yegor_kochetkov",
-	"license": "ISC",
-	"type": "module"
+	"license": "ISC"
 }
