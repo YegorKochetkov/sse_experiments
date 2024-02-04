@@ -13,11 +13,10 @@
       const sseElement = document.getElementById("sse");
       console.log("start stream: 1");
 
-      // Open several streams for testing
-      for (let i=2; i <= 5; i++) {
+      // Open several streams just for testing
+      for (let i = 2; i <= 5; i++) {
         new EventSource("https://127.0.0.1:8080/get-stream");
         console.debug('start stream:', i);
-        
       }
 
       eventSource.onmessage = (message) => {
